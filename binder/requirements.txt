@@ -1,0 +1,11 @@
+dash
+dash-table
+dash-extensions
+dash-bootstrap-components
+dash-core-components
+dash-html-components
+pandas
+openpyxl
+requests
+jupyter-dash
+jupyter_server_proxy
