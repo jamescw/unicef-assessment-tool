@@ -5,7 +5,6 @@ import dash_core_components as dcc
 import dash_html_components as html
 import dash_bootstrap_components as dbc
 import plotly.express as px
-from jupyter_dash import JupyterDash
 
 
 data = pd.read_excel("UNICEF_framework_V09.xlsx", sheet_name="All", skiprows=2)
@@ -232,7 +231,7 @@ groups.append(
 from dash.dependencies import Input, Output, State, ALL, MATCH
 
 external_stylesheets = ["https://seotest.buzz/dash/assets/styles/main.css"]
-app = JupyterDash(__name__, external_stylesheets=external_stylesheets)
+app = dash.Dash(__name__, external_stylesheets=external_stylesheets)
 
 app.layout = html.Div(
     [
@@ -317,6 +316,21 @@ def display_dropdowns(click, id, value):
         lambda x: apply_rankings(x["Assessment"], x["Score"]), axis=1
     )
 
+    business = results[results["Scope"] == "business"].groupby(["Issue", "Materiality"])
+        .agg({"Score": "mean"})
+        .reset_index()
+    supply = results[results["Scope"] == "supply"]
+
+    combined = (
+        pd.concat([business, supply])
+        .groupby(["Issue"])
+        .agg({"Score": "mean"})
+        .reset_index()
+    )
+    combined["Scope"] = "Combined"
+
+    combined["Materiality"] = combined["Score"].apply(meterial)
+
     survey_results = DataTable(
         data=results.sort_values("Score").to_dict("records"),
         columns=[
@@ -335,20 +349,7 @@ def display_dropdowns(click, id, value):
 
     elif button_id == "Materiality":
 
-        business = assessment[table["Scope"] == "business"]
-        supply = assessment[table["Scope"] == "supply"]
-
-        combined = (
-            pd.concat([business, supply])
-            .groupby(["Issue"])
-            .agg({"Score": "mean"})
-            .reset_index()
-        )
-        combined["Scope"] = "Combined"
-
-        business["Materiality"] = business["Score"].apply(meterial)
-        supply["Materiality"] = supply["Score"].apply(meterial)
-        combined["Materiality"] = combined["Score"].apply(meterial)
+        
 
         tables.extend(
             [
