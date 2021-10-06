@@ -1,3 +1,5 @@
+import statistics
+
 import pandas as pd
 import dash
 from dash_table import DataTable, FormatTemplate
@@ -227,6 +229,27 @@ groups.append(
     )
 )
 
+meterial = (
+    lambda x: "Low Risk"
+    if x >= 4
+    else ("Medium Risk" if x >= 2 and x < 4 else "High Risk")
+)
+
+rating = (
+    lambda x: "Strong"
+    if x >= 3
+    else ("Good" if x >= 2 and x < 3 else ("Moderate" if x >= 1 and x < 2 else "Weak"))
+)
+
+priority = (
+    lambda x: "Not a priority"
+    if x >= 3
+    else (
+        "Low priority"
+        if x >= 2 and x < 3
+        else ("Priority" if x >= 1 and x < 2 else "High priority")
+    )
+)
 
 from dash.dependencies import Input, Output, State, ALL, MATCH
 
@@ -280,76 +303,100 @@ def display_dropdowns(click, id, value):
     tables = [html.Br()]
 
     results = (
-        table.groupby(["Scope", "Issue", "Assessment"])
+        table.groupby(["Issue", "Scope", "Assessment"])
         .agg({"Score": "mean"})
         .reset_index()
+        .set_index(["Issue"])
     )
 
-    meterial = (
-        lambda x: "Not Material"
-        if x >= 4
-        else (
-            "Less material"
-            if x >= 3 and x < 4
-            else ("Material" if x >= 1 and x < 3 else "Very material")
-        )
+    meteriality = results[results["Assessment"] == "Materiality"]
+    due_diligence = results[results["Assessment"] == "Due diligence"]
+    mitigation = results[results["Assessment"] == "Mitigation"]
+
+    meteriality["Materiality"] = meteriality["Score"].apply(meterial)
+    due_diligence["Rating"] = due_diligence["Score"].apply(rating)
+    mitigation["Rating"] = mitigation["Score"].apply(rating)
+
+    due_diligence_average = due_diligence["Score"].mean()
+    mitigation["combined_score"] = mitigation["Score"].apply(
+        lambda x: statistics.mean([x, due_diligence_average])
     )
 
-    rating = (
-        lambda x: "Strong"
-        if x >= 3
-        else (
-            "Good" if x >= 2 and x < 3 else ("Moderate" if x >= 1 and x < 2 else "Weak")
-        )
+    meteriality_combined = meteriality.join(
+        mitigation, on="Issue", how="outer", rsuffix="mitigation"
+    ).reset_index()
+    meteriality_combined["combined_rating"] = meteriality_combined[
+        "combined_score"
+    ].apply(rating)
+    meteriality_combined["priority_score"] = meteriality_combined[
+        ["Score", "combined_score"]
+    ].mean(axis=1)
+    meteriality_combined["priority"] = meteriality_combined["priority_score"].apply(
+        priority
     )
 
-    def apply_rankings(assessment, score):
-        if assessment == "Materiality":
-            return meterial(score)
-        else:
-            return rating(score)
-
-    results["Materiality"] = results.apply(
-        lambda x: apply_rankings(x["Assessment"], x["Score"]), axis=1
-    )
-    results["Rating"] = results.apply(
-        lambda x: apply_rankings(x["Assessment"], x["Score"]), axis=1
-    )
-
-    business = results[results["Scope"] == "business"].groupby(["Issue", "Materiality"])
-        .agg({"Score": "mean"})
-        .reset_index()
-    supply = results[results["Scope"] == "supply"]
-
-    combined = (
-        pd.concat([business, supply])
+    business_meteriality = meteriality_combined[
+        meteriality_combined["Scope"] == "business"
+    ]
+    supply_meteriality = meteriality_combined[meteriality_combined["Scope"] == "supply"]
+    combined_meteriality = (
+        pd.concat([business_meteriality, supply_meteriality])
         .groupby(["Issue"])
-        .agg({"Score": "mean"})
+        .agg({"Score": "mean", "combined_score": "mean", "priority_score": "mean"})
         .reset_index()
     )
-    combined["Scope"] = "Combined"
-
-    combined["Materiality"] = combined["Score"].apply(meterial)
-
-    survey_results = DataTable(
-        data=results.sort_values("Score").to_dict("records"),
-        columns=[
-            dict(id="Issue", name="Issue", type="text"),
-            dict(id="Score", name="Score", type="numeric"),
-            dict(id="Materiality", name="Materiality", type="text"),
-        ],
-        style_cell={"textAlign": "left"},
-        sort_by=[{"column_id": "Score", "direction": "asc"}],
+    combined_meteriality["Scope"] = "Combined"
+    combined_meteriality["Materiality"] = combined_meteriality["Score"].apply(meterial)
+    combined_meteriality["combined_rating"] = combined_meteriality[
+        "combined_score"
+    ].apply(rating)
+    combined_meteriality["priority"] = combined_meteriality["priority_score"].apply(
+        priority
     )
-
-    assessment = results[results["Assessment"] == button_id]
 
     if button_id == "results":
-        tables.append(survey_results)
+
+        tables.extend(
+            [
+                html.Div(
+                    [
+                        html.Label(f"Scope: {scope['Scope'].iloc[0]}"),
+                        DataTable(
+                            data=scope.sort_values("Score").to_dict("records"),
+                            columns=[
+                                dict(id="Issue", name="Issue", type="text"),
+                                dict(id="Scope", name="Scope", type="text"),
+                                dict(id="Score", name="Score", type="numeric"),
+                                dict(id="Materiality", name="Materiality", type="text"),
+                                dict(
+                                    name="Combined Score",
+                                    id="combined_score",
+                                    type="numeric",
+                                ),
+                                dict(name="Rating", id="combined_rating", type="text"),
+                                dict(
+                                    name="Priority score",
+                                    id="priority_score",
+                                    type="numeric",
+                                ),
+                                dict(name="Priority", id="priority", type="text"),
+                            ],
+                            style_cell={"textAlign": "left"},
+                            sort_by=[
+                                {"column_id": "Material Score", "direction": "asc"}
+                            ],
+                        ),
+                    ]
+                )
+                for scope in [
+                    business_meteriality,
+                    supply_meteriality,
+                    combined_meteriality,
+                ]
+            ]
+        )
 
     elif button_id == "Materiality":
-
-        
 
         tables.extend(
             [
@@ -394,14 +441,16 @@ def display_dropdowns(click, id, value):
                         ),
                     ]
                 )
-                for scope in [business, supply, combined]
+                for scope in [
+                    business_meteriality,
+                    supply_meteriality,
+                    combined_meteriality,
+                ]
             ]
         )
     elif button_id == "Due diligence" or button_id == "Mitigation":
 
-        diligence = assessment.groupby(["Issue"]).agg({"Score": "mean"}).reset_index()
-
-        diligence["Rating"] = diligence["Score"].apply(rating)
+        results_frame = due_diligence if button_id == "Due diligence" else mitigation
 
         tables.extend(
             [
@@ -409,7 +458,7 @@ def display_dropdowns(click, id, value):
                     [
                         html.Label(button_id),
                         DataTable(
-                            data=diligence.sort_values("Score").to_dict("records"),
+                            data=results_frame.sort_values("Score").to_dict("records"),
                             columns=[
                                 dict(id="Issue", name="Issue", type="text"),
                                 dict(id="Score", name="Score", type="numeric"),
