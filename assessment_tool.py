@@ -219,12 +219,16 @@ groups.append(
     dbc.Tab(
         label="Report",
         children=[
-            dbc.Button(
-                "Show Results",
-                id={"type": "survey-submit", "index": "results"},
-                color="primary",
-            ),
-            html.Div(id={"type": "survey-results", "index": "results"}),
+            html.Div(
+                [
+                    dbc.Button(
+                        "Show Results",
+                        id={"type": "survey-submit", "index": "results"},
+                        color="primary",
+                    ),
+                    html.Div(id={"type": "survey-results", "index": "results"}),
+                ]
+            )
         ],
     )
 )
@@ -356,6 +360,35 @@ def display_dropdowns(click, id, value):
 
     if button_id == "results":
 
+        fig = px.scatter(
+            combined_meteriality,
+            x="Score",
+            y="combined_score",
+            text="Issue",
+            labels={
+                "combined_score": "Quality of due diligence",
+                "Score": "Materiality of child rights issues",
+            },
+        )
+        fig.update_layout(yaxis_range=[0, 4], xaxis_range=[0, 4])
+        fig.update_traces(textposition="bottom right")
+        fig.add_hline(y=2)
+        fig.add_vline(x=2)
+
+        bar = px.bar(
+            combined_meteriality,
+            y=["Score", "combined_score"],
+            x="Issue",
+            barmode="group",
+            labels={
+                "combined_score": "Due diligence",
+                "Score": "Materiality",
+            },
+            title="Due diligence of material issues",
+        )
+        fig.update_layout(yaxis_range=[0, 4])
+
+        tables.extend([dcc.Graph(figure=fig), dcc.Graph(figure=bar)])
         tables.extend(
             [
                 html.Div(
@@ -365,17 +398,16 @@ def display_dropdowns(click, id, value):
                             data=scope.sort_values("Score").to_dict("records"),
                             columns=[
                                 dict(id="Issue", name="Issue", type="text"),
-                                dict(id="Scope", name="Scope", type="text"),
-                                dict(id="Score", name="Score", type="numeric"),
+                                dict(id="Score", name="Score (0-4)", type="numeric"),
                                 dict(id="Materiality", name="Materiality", type="text"),
                                 dict(
-                                    name="Combined Score",
+                                    name="Score (0-3)",
                                     id="combined_score",
                                     type="numeric",
                                 ),
                                 dict(name="Rating", id="combined_rating", type="text"),
                                 dict(
-                                    name="Priority score",
+                                    name="Score (0-3)",
                                     id="priority_score",
                                     type="numeric",
                                 ),
@@ -384,6 +416,38 @@ def display_dropdowns(click, id, value):
                             style_cell={"textAlign": "left"},
                             sort_by=[
                                 {"column_id": "Material Score", "direction": "asc"}
+                            ],
+                            style_header_conditional=[
+                                {
+                                    "if": {"column_id": "Issue"},
+                                    "backgroundColor": "lightBlue",
+                                },
+                                {
+                                    "if": {"column_id": "Score"},
+                                    "backgroundColor": "lightBlue",
+                                },
+                                {
+                                    "if": {"column_id": "Materiality"},
+                                    "backgroundColor": "lightBlue",
+                                },
+                                {
+                                    "if": {"column_id": "combined_score"},
+                                    "backgroundColor": "yellow",
+                                },
+                                {
+                                    "if": {"column_id": "combined_rating"},
+                                    "backgroundColor": "yellow",
+                                },
+                                {
+                                    "if": {"column_id": "priority_score"},
+                                    "backgroundColor": "green",
+                                    "color": "white",
+                                },
+                                {
+                                    "if": {"column_id": "priority"},
+                                    "backgroundColor": "green",
+                                    "color": "white",
+                                },
                             ],
                         ),
                     ]
@@ -458,7 +522,9 @@ def display_dropdowns(click, id, value):
                     [
                         html.Label(button_id),
                         DataTable(
-                            data=results_frame.sort_values("Score").to_dict("records"),
+                            data=results_frame.reset_index()
+                            .sort_values("Score")
+                            .to_dict("records"),
                             columns=[
                                 dict(id="Issue", name="Issue", type="text"),
                                 dict(id="Score", name="Score", type="numeric"),
