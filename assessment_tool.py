@@ -388,7 +388,7 @@ def display_dropdowns(click, id, value):
         )
         fig.update_layout(yaxis_range=[0, 4])
 
-        tables.extend([dcc.Graph(figure=fig), dcc.Graph(figure=bar)])
+        tables.extend([dcc.Graph(figure=bar), dcc.Graph(figure=fig)])
         tables.extend(
             [
                 html.Div(
