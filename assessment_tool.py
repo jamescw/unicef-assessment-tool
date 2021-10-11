@@ -1,4 +1,5 @@
 import statistics
+from dash_html_components.I import I
 
 import pandas as pd
 import dash
@@ -132,6 +133,30 @@ def make_header(**kwargs):
     )
 
 
+def make_question(index, label, question):
+
+    return dbc.FormGroup(
+        [
+            dbc.Label(label, className="mt-2"),
+            dbc.RadioItems(
+                options=[
+                    {
+                        "label": option.split("=")[0].strip(),
+                        "value": int(option.split("=")[1].strip()),
+                    }
+                    for option in question["Answer options"].splitlines()
+                    if option
+                ],
+                id={
+                    "type": "question-answer",
+                    "id": f"{index}-{label}",
+                },
+                inline=True,
+            ),
+        ]
+    )
+
+
 def make_questions(category, questions):
     selections = [
         dbc.Card(
@@ -142,47 +167,31 @@ def make_questions(category, questions):
                             question["Question number"], question["Question"]
                         )
                     ),
-                    dbc.FormGroup(
+                    html.Div(
                         [
-                            dbc.Label("Business", className="mt-2"),
-                            dbc.RadioItems(
-                                options=[
-                                    {
-                                        "label": option.split("=")[0].strip(),
-                                        "value": int(option.split("=")[1].strip()),
-                                    }
-                                    for option in question[
-                                        "Answer options"
-                                    ].splitlines()
-                                    if option
+                            dbc.Button(
+                                [
+                                    html.I(className="fa-solid fa-info-circle mx-1"),
+                                    "More Info",
                                 ],
                                 id={
-                                    "type": "question-answer",
-                                    "id": f"{index}-business",
+                                    "type": "question-info",
+                                    "index": f"{index}-info",
                                 },
-                                inline=True,
+                                className="mt-1",
+                            ),
+                            dbc.Collapse(
+                                dbc.Card(dbc.CardBody(question["Information"])),
+                                id={
+                                    "type": "question-info-content",
+                                    "index": f"{index}-info",
+                                },
+                                is_open=False,
                             ),
                         ]
                     ),
-                    dbc.FormGroup(
-                        [
-                            dbc.Label("Supply Chain", className="mt-2"),
-                            dbc.RadioItems(
-                                options=[
-                                    {
-                                        "label": option.split("=")[0].strip(),
-                                        "value": int(option.split("=")[1].strip()),
-                                    }
-                                    for option in question[
-                                        "Answer options"
-                                    ].splitlines()
-                                    if option
-                                ],
-                                id={"type": "question-answer", "id": f"{index}-supply"},
-                                inline=True,
-                            ),
-                        ]
-                    )
+                    make_question(index, "Business", question),
+                    make_question(index, "Supply Chain", question)
                     if not pd.isna(question["Supply chain"])
                     else None,
                 ]
@@ -191,15 +200,6 @@ def make_questions(category, questions):
         )
         for index, question in questions.iterrows()
     ]
-    selections.extend(
-        [
-            dbc.Button(
-                "Submit",
-                id={"type": "survey-submit", "index": category},
-                color="primary",
-            )
-        ]
-    )
     return dbc.Tab(
         label=category,
         children=[
@@ -208,6 +208,12 @@ def make_questions(category, questions):
                 children=selections,
             ),
             html.Div(id={"type": "survey-results", "index": category}),
+            dbc.Button(
+                "Submit answers",
+                id={"type": "survey-submit", "index": category},
+                color="primary",
+            ),
+            html.Br(),
         ],
     )
 
@@ -221,6 +227,7 @@ groups.append(
         children=[
             html.Div(
                 [
+                    html.Br(),
                     dbc.Button(
                         "Show Results",
                         id={"type": "survey-submit", "index": "results"},
@@ -257,7 +264,10 @@ priority = (
 
 from dash.dependencies import Input, Output, State, ALL, MATCH
 
-external_stylesheets = ["https://seotest.buzz/dash/assets/styles/main.css"]
+external_stylesheets = [
+    "https://seotest.buzz/dash/assets/styles/main.css",
+    "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta2/css/all.min.css",
+]
 app = dash.Dash(__name__, external_stylesheets=external_stylesheets)
 
 app.layout = html.Div(
@@ -279,6 +289,17 @@ app.layout = html.Div(
     ],
     id="mainContainer",
 )
+
+
+@app.callback(
+    Output({"type": "question-info-content", "index": MATCH}, "is_open"),
+    [Input({"type": "question-info", "index": MATCH}, "n_clicks")],
+    [State({"type": "question-info-content", "index": MATCH}, "is_open")],
+)
+def toggle_collapse(n, is_open):
+    if n:
+        return not is_open
+    return is_open
 
 
 @app.callback(
@@ -340,9 +361,11 @@ def display_dropdowns(click, id, value):
     )
 
     business_meteriality = meteriality_combined[
-        meteriality_combined["Scope"] == "business"
+        meteriality_combined["Scope"] == "Business"
     ]
-    supply_meteriality = meteriality_combined[meteriality_combined["Scope"] == "supply"]
+    supply_meteriality = meteriality_combined[
+        meteriality_combined["Scope"] == "Supply Chain"
+    ]
     combined_meteriality = (
         pd.concat([business_meteriality, supply_meteriality])
         .groupby(["Issue"])
