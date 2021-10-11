@@ -1,5 +1,4 @@
 import statistics
-from dash_html_components.I import I
 
 import pandas as pd
 import dash
