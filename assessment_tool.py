@@ -328,7 +328,7 @@ def display_dropdowns(click, id, value):
 
     results = (
         table.groupby(["Issue", "Scope", "Assessment"])
-        .agg({"Score": "mean"})
+        .agg({"Score": "sum"})  # sum of the answers instead
         .reset_index()
         .set_index(["Issue"])
     )
