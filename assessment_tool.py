@@ -238,6 +238,12 @@ groups.append(
                 ]
             )
         ],
+    ),
+    dbc.Tab(
+        label="Geographic",
+        children=[
+            
+        ]
     )
 )
 
