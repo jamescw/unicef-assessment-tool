@@ -162,9 +162,11 @@ def make_questions(category, questions):
             dbc.CardBody(
                 [
                     html.B(
-                        "{}: {}".format(
-                            question["Question number"], question["Question"]
-                        )
+                        [
+                            "{}: ".format(question["Question number"]),
+                            question["Question"].splitlines()[0],
+                            *[html.P(q) for q in question["Question"].splitlines()[1:]],
+                        ]
                     ),
                     html.Div(
                         [
@@ -177,7 +179,7 @@ def make_questions(category, questions):
                                     "type": "question-info",
                                     "index": f"{index}-info",
                                 },
-                                className="mt-1",
+                                className="my-1",
                             ),
                             dbc.Collapse(
                                 dbc.Card(dbc.CardBody(question["Information"])),
