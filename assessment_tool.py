@@ -8,7 +8,10 @@ import dash_html_components as html
 import dash_bootstrap_components as dbc
 import plotly.express as px
 
-
+index_scores = pd.read_csv(
+    "IndexScores.csv", encoding="unicode_escape", engine="python"
+).groupby()
+index_scores.rename(columns={"INDICATOR_ISSUE": "Issue"}, inplace=True)
 data = pd.read_excel("UNICEF_framework_V09.xlsx", sheet_name="All", skiprows=2)
 data = data.set_index("Reference")
 
@@ -222,29 +225,102 @@ def make_questions(category, questions):
 groups = []
 for category in data["Assessment"].unique():
     groups.append(make_questions(category, data[data["Assessment"] == category]))
-groups.append(
-    dbc.Tab(
-        label="Report",
-        children=[
-            html.Div(
-                [
-                    html.Br(),
-                    dbc.Button(
-                        "Show Results",
-                        id={"type": "survey-submit", "index": "results"},
-                        color="primary",
-                    ),
-                    html.Div(id={"type": "survey-results", "index": "results"}),
-                ]
-            )
-        ],
-    ),
-    dbc.Tab(
-        label="Geographic",
-        children=[
-            
-        ]
-    )
+groups.extend(
+    [
+        dbc.Tab(
+            label="Report",
+            children=[
+                html.Div(
+                    [
+                        html.Br(),
+                        dbc.Button(
+                            "Show Results",
+                            id={"type": "survey-submit", "index": "results"},
+                            color="primary",
+                        ),
+                        html.Div(id={"type": "survey-results", "index": "results"}),
+                    ]
+                )
+            ],
+        ),
+        dbc.Tab(
+            label="Geographic Risk",
+            children=[
+                html.Div(
+                    [
+                        dbc.Card(
+                            dbc.CardBody(
+                                [
+                                    html.B(
+                                        "Answer the following questions to help us identify which countries are relevant to your business, and to your supply chain."
+                                    ),
+                                    html.B(
+                                        "There are 2 questions in total. Please answer each question, answering separately for your business operations, and your supply chain. It  should take 2 minutes to complete this section."
+                                    ),
+                                    html.B(
+                                        "For more information, click on the i button for each question, or click here to learn more about the Children's Rights and Business Atlas xxxxx"
+                                    ),
+                                ]
+                            ),
+                            className="m-3",
+                        ),
+                        dbc.Row(
+                            [
+                                dbc.Col(
+                                    html.B(
+                                        "25d: Please select any countries where your business operates"
+                                    )
+                                ),
+                                dbc.Col(
+                                    dcc.Dropdown(
+                                        options=[
+                                            {"label": country, "value": country}
+                                            for country in index_scores.COUNTRY_ISO_3.unique()
+                                        ],
+                                        multi=True,
+                                        style={
+                                            "zIndex": "auto",
+                                        },
+                                        id="business-countries",
+                                    )
+                                ),
+                            ]
+                        ),
+                        html.Br(),
+                        dbc.Row(
+                            [
+                                dbc.Col(
+                                    html.B(
+                                        "26d: Please select any countries from where you source goods and services through your supply chain"
+                                    )
+                                ),
+                                dbc.Col(
+                                    dcc.Dropdown(
+                                        options=[
+                                            {"label": country, "value": country}
+                                            for country in index_scores.COUNTRY_ISO_3.unique()
+                                        ],
+                                        multi=True,
+                                        style={
+                                            "zIndex": "auto",
+                                        },
+                                        id="supply-countries",
+                                    )
+                                ),
+                            ]
+                        ),
+                        html.Br(),
+                        dbc.Button(
+                            "Show Risks",
+                            id={"type": "survey-submit", "index": "geographic"},
+                            color="primary",
+                        ),
+                        html.Div(id={"type": "survey-results", "index": "geographic"}),
+                    ],
+                )
+            ],
+        ),
+    ]
 )
 
 meterial = (
@@ -314,9 +390,11 @@ def toggle_collapse(n, is_open):
     Input({"type": "survey-submit", "index": MATCH}, "n_clicks"),
     State({"type": "question-answer", "id": ALL}, "id"),
     State({"type": "question-answer", "id": ALL}, "value"),
+    State("business-countries", "value"),
+    State("supply-countries", "value"),
     prevent_initial_call=True,
 )
-def display_dropdowns(click, id, value):
+def display_dropdowns(click, id, value, business_countries, supply_countries):
 
     button_id = dash.callback_context.inputs_list[0]["id"]["index"]
     print(button_id)
@@ -583,6 +661,92 @@ def display_dropdowns(click, id, value):
                         ),
                     ]
                 )
+            ]
+        )
+
+    elif button_id == "geographic":
+
+        index_data = index_scores[
+            index_scores["COUNTRY_ISO_3"].isin(
+                set().union(business_countries, supply_countries)
+            )
+        ]
+        buisness = meteriality_combined[
+            meteriality_combined["priority_score"]
+            < 2 & meteriality_combined["Scope"]
+            == "Business"
+        ]
+        supply = meteriality_combined[
+            meteriality_combined["priority_score"]
+            < 2 & meteriality_combined["Scope"]
+            == "Supply"
+        ]
+        geo_business = buisness.join(
+            index_scores[index_scores["COUNTRY_ISO_3"].isin(business_countries)],
+            on="Issue",
+            how="outer",
+            rsuffix="geo",
+        ).reset_index()
+
+        tables.extend(
+            [
+                dcc.Graph(
+                    id="map",
+                    figure=px.choropleth(
+                        index_scores,  # pandas dataframe to use
+                        locations="COUNTRY_ISO_3",  # column in df with ISO-3 code
+                        color="ISSUE_INDEX_SCORE",  # column in df with values we want to show
+                        hover_name="INDICATOR_ISSUE",  # column in df to add to hover
+                        color_continuous_scale=px.colors.sequential.Plasma,
+                    ),
+                ),
+                DataTable(
+                    data=geo_output.sort_values("Score").to_dict("records"),
+                    columns=[
+                        dict(id="Scope", name="Scope", type="text"),
+                        dict(id="Issue", name="Issue", type="text"),
+                        dict(
+                            name="Score (0-3)",
+                            id="priority_score",
+                            type="numeric",
+                        ),
+                        dict(name="Priority", id="priority", type="text"),
+                    ],
+                    style_cell={"textAlign": "left"},
+                    sort_by=[{"column_id": "priority_score", "direction": "asc"}],
+                    style_header_conditional=[
+                        {
+                            "if": {"column_id": "Issue"},
+                            "backgroundColor": "lightBlue",
+                        },
+                        {
+                            "if": {"column_id": "Score"},
+                            "backgroundColor": "lightBlue",
+                        },
+                        {
+                            "if": {"column_id": "Materiality"},
+                            "backgroundColor": "lightBlue",
+                        },
+                        {
+                            "if": {"column_id": "combined_score"},
+                            "backgroundColor": "yellow",
+                        },
+                        {
+                            "if": {"column_id": "combined_rating"},
+                            "backgroundColor": "yellow",
+                        },
+                        {
+                            "if": {"column_id": "priority_score"},
+                            "backgroundColor": "green",
+                            "color": "white",
+                        },
+                        {
+                            "if": {"column_id": "priority"},
+                            "backgroundColor": "green",
+                            "color": "white",
+                        },
+                    ],
+                ),
             ]
         )
 
